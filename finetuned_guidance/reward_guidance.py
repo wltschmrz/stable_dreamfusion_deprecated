@@ -532,8 +532,8 @@ class RGPipe(StableDiffusionXLPipeline):
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-                if XLA_AVAILABLE:
-                    xm.mark_step()
+                # if XLA_AVAILABLE:
+                #     xm.mark_step()
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
