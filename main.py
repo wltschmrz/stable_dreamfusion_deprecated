@@ -363,6 +363,17 @@ if __name__ == '__main__':
         if 'SD' in opt.guidance:
             from guidance.sd_utils import StableDiffusion
             guidance['SD'] = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key, opt.t_range)
+        if 'SDXL' in opt.guidance:
+            from finetuned_guidance.sdxl_utils import RGPipe
+            precision_t = torch.float16 if opt.fp16 else torch.float32
+            guidance['SDXL'] = RGPipe.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=precision_t).to(device)
+            lora_dir = "/workspace/stable_dreamfusion_depre/finetuned_guidance/checkpoint-1000"
+            guidance['SDXL'].load_lora_weights(lora_dir, adapter_name='subject')
+            inserting_tokens = ["<man>"]
+            from safetensors.torch import load_file
+            state_dict = load_file(lora_dir+"/learned_embeds.safetensors")
+            guidance['SDXL'].load_textual_inversion(state_dict["clip_l"], token=inserting_tokens, text_encoder=guidance['SDXL'].text_encoder, tokenizer=guidance['SDXL'].tokenizer)
+            guidance['SDXL'].load_textual_inversion(state_dict["clip_g"], token=inserting_tokens, text_encoder=guidance['SDXL'].text_encoder_2, tokenizer=guidance['SDXL'].tokenizer_2)
         '''     
         if 'IF' in opt.guidance:
             from guidance.if_utils import IF

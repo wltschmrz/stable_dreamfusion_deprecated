@@ -362,6 +362,13 @@ class Trainer(object):
                 for d in ['front', 'side', 'back']:
                     self.embeddings['SD'][d] = self.guidance['SD'].get_text_embeds([f"{self.opt.text}, {d} view"])
 
+            if 'SDXL' in self.guidance:
+                self.embeddings['SDXL']['default'] = self.guidance['SDXL'].get_text_embeds([self.opt.text])
+                self.embeddings['SDXL']['uncond'] = self.guidance['SDXL'].get_text_embeds([self.opt.negative])
+
+                for d in ['front', 'side', 'back']:
+                    self.embeddings['SDXL'][d] = self.guidance['SDXL'].get_text_embeds([f"{self.opt.text}, {d} view"])
+
             if 'IF' in self.guidance:
                 self.embeddings['IF']['default'] = self.guidance['IF'].get_text_embeds([self.opt.text])
                 self.embeddings['IF']['uncond'] = self.guidance['IF'].get_text_embeds([self.opt.negative])
@@ -942,7 +949,6 @@ class Trainer(object):
 
         return outputs
 
-
     # [GUI] test on a single image
     def test_gui(self, pose, intrinsics, mvp, W, H, bg_color=None, spp=1, downscale=1, light_d=None, ambient_ratio=1.0, shading='albedo'):
 
@@ -1108,7 +1114,6 @@ class Trainer(object):
 
         cpu_mem, gpu_mem = get_CPU_mem(), get_GPU_mem()[0]
         self.log(f"==> [{time.strftime('%Y-%m-%d_%H-%M-%S')}] Finished Epoch {self.epoch}/{max_epochs}. CPU={cpu_mem:.1f}GB, GPU={gpu_mem:.1f}GB.")
-
 
     def evaluate_one_epoch(self, loader, name=None):
         self.log(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")
@@ -1334,7 +1339,6 @@ class Trainer(object):
 
 def get_CPU_mem():
     return psutil.Process(os.getpid()).memory_info().rss /1024**3
-
 
 def get_GPU_mem():
     num = torch.cuda.device_count()

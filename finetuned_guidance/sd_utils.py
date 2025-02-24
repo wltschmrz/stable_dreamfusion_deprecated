@@ -82,7 +82,6 @@ class StableDiffusion(nn.Module):
 
         return embeddings
 
-
     def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
                    save_guidance_path:Path=None):
 
@@ -162,7 +161,6 @@ class StableDiffusion(nn.Module):
 
         return loss
     
-
     def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
                    save_guidance_path:Path=None):
 
@@ -246,7 +244,6 @@ class StableDiffusion(nn.Module):
 
         return loss
 
-
     @torch.no_grad()
     def produce_latents(self, text_embeddings, height=512, width=512, num_inference_steps=50, guidance_scale=7.5, latents=None):
 
@@ -318,7 +315,7 @@ class StableDiffusion(nn.Module):
 
         return imgs
 
-
+'''
 if __name__ == '__main__':
 
     import argparse
@@ -348,7 +345,5 @@ if __name__ == '__main__':
     # visualize image
     plt.imshow(imgs[0])
     plt.show()
-
-
-
+'''
 

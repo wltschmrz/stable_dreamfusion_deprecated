@@ -1,4 +1,13 @@
+
+
+
+
 *.log
 __pycache__
 trial/
 finetuned_guidance/checkpoint-1000/
+*.png
+*.so
+*.o
+.ninja*
+.ninja

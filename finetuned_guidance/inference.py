@@ -5,10 +5,11 @@ from reward_guidance import RGPipe
 import random
 
 output_path = ".png"
-lora_dir = "/workspace/stable_dreamfusion_depre/finetuned_guidance/checkpoint-1000" # saved lora directory
+lora_dir = "/workspace/stable_dreamfusion_deprecated/finetuned_guidance/checkpoint-1000" # saved lora directory
 # style_lora_dir = "/content/drive/MyDrive/dco/output_style/checkpoint-2000"
+assert os.path.exists(lora_dir), f"Error: {lora_dir} does not exist."
 
-pipe = RGPipe.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")    
+pipe = RGPipe.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda:1")    
 pipe.load_lora_weights(lora_dir, adapter_name='subject')
 
 inserting_tokens = ["<man>"] # load new tokens    
