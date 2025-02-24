@@ -594,12 +594,23 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
         clip_skip: int = None,
         height: int = None,
         width: int = None,
+        guidance_rescale: float = 0.0,
         generator=None,
         **kwargs,
     ):
         device = self._execution_device
         do_classifier_free_guidance = self.do_classifier_free_guidance
         cross_attention_kwargs = cross_attention_kwargs or {}
+
+        # 0. Default height and width to unet
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+
+        original_size = original_size or (height, width)
+        target_size = target_size or (height, width)
+        print(original_size, target_size)  ####
+        if not original_size==target_size==(512,512):
+            original_size = target_size = (512,512)
 
         # 1) prompt 개수 확인
         if prompt is not None and isinstance(prompt, str):
@@ -672,63 +683,66 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
 
         add_time_ids = self._get_add_time_ids(
             original_size,
-            crops_coords_top_left,
+            (0,0),
             target_size,
             dtype=prompt_embeds.dtype,
             text_encoder_projection_dim=text_encoder_projection_dim,
         )
-        if negative_original_size is not None and negative_target_size is not None:
-            negative_add_time_ids = self._get_add_time_ids(
-                negative_original_size,
-                negative_crops_coords_top_left,
-                negative_target_size,
-                dtype=prompt_embeds.dtype,
-                text_encoder_projection_dim=text_encoder_projection_dim,
-            )
-        else:
-            negative_add_time_ids = add_time_ids
+        # if negative_original_size is not None and negative_target_size is not None:
+        #     negative_add_time_ids = self._get_add_time_ids(
+        #         negative_original_size,
+        #         negative_crops_coords_top_left,
+        #         negative_target_size,
+        #         dtype=prompt_embeds.dtype,
+        #         text_encoder_projection_dim=text_encoder_projection_dim,
+        #     )
+        # else:
+        negative_add_time_ids = add_time_ids  #
 
-        lora_prompt_embeds = prompt_embeds_ti
-        lora_add_text_embeds = add_text_embeds_ti
-        lora_add_time_ids = add_time_ids
+        # 5) LoRA prompt 임베딩 / classifier-free guidance 구성
         if self.do_classifier_free_guidance:
+            # (uncond, cond) concat
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
-        lora_prompt_embeds = lora_prompt_embeds.to(device)
-        lora_add_text_embeds = lora_add_text_embeds.to(device)
-        lora_add_time_ids = lora_add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        lora_prompt_embeds = prompt_embeds_ti.to(device)
+        lora_add_text_embeds = add_text_embeds_ti.to(device)
+        lora_add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
         
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-                image_embeds = image_embeds.to(device)
-
-
-
+        # 6) 반환 (unet forward에 필요한 정보)
+        return {
+            "batch_size": batch_size,
+            "prompt_embeds": prompt_embeds,
+            "add_text_embeds": add_text_embeds,
+            "add_time_ids": add_time_ids,
+            "lora_prompt_embeds": lora_prompt_embeds,
+            "lora_add_text_embeds": lora_add_text_embeds,
+            "lora_add_time_ids": lora_add_time_ids,
+            "do_classifier_free_guidance": do_classifier_free_guidance,
+            "cross_attention_kwargs": self._cross_attention_kwargs
+        }
 
     def encode_imgs(self, imgs):
         """
         imgs: [B,3,H,W] in [0,1] range
         """
+        dtype = next(self.image_encoder.parameters()).dtype
+        imgs = imgs.to(device=self.device, dtype=dtype)
         imgs = 2*imgs -1
         posterior = self.vae.encode(imgs).latent_dist
         # SDXL vae.config.scaling_factor가 0.13025일 수도 있음
-        scale = getattr(self.vae.config, "scaling_factor", 0.18215)
+        print(self.vae.config.scaling_factor)  ####
+        scale = getattr(self.vae.config, "scaling_factor", 0.13025)
         latents = posterior.sample() * scale
         return latents
 
     def decode_latents(self, latents):
-        scale = getattr(self.vae.config, "scaling_factor", 0.18215)
+        scale = getattr(self.vae.config, "scaling_factor", 0.13025)
         latents = latents / scale
         imgs = self.vae.decode(latents).sample
         imgs = (imgs*0.5+0.5).clamp(0,1)
@@ -736,28 +750,37 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
 
     def train_step(
         self, 
-        text_embeddings, # [B, seq_len, hidden_dim]
+        text_embeddings, # dict: [B, seq_len, hidden_dim]
         pred_rgb,        # [B, 3, H, W]
         guidance_scale=100,
+        guidance_scale_lora=40,
         as_latent=False,
         grad_scale=1,
         save_guidance_path:Path=None
     ):
-        """
-        DreamFusion에서 SD 1.x 방식으로 noise_pred를 구해 grad 만들던 로직을 흉내냄.
-        EulerDiscreteScheduler를 쓰면 scheduler.add_noise, alphas_cumprod가 없어 오류가 날 수 있음.
-        => 반드시 DDIM/PNDM처럼 training-friendly scheduler를 써야 안전함.
-        """
+        self.guidance_scale = guidance_scale
+        self.guidance_scale_lora = guidance_scale_lora
+        
         if as_latent:
-            latents = F.interpolate(pred_rgb, (64,64))*2 -1
+            latents = F.interpolate(pred_rgb, (64,64), mode='bilinear', align_corners=False)*2 -1
         else:
-            pred_rgb_512 = F.interpolate(pred_rgb, (512,512))
+            pred_rgb_512 = F.interpolate(pred_rgb, (1024, 1024), mode='bilinear', align_corners=False)  ####
             latents = self.encode_imgs(pred_rgb_512)
 
         # t in [min_step, max_step]
         t = torch.randint(self.min_step, self.max_step+1, (latents.shape[0],), device=self.device, dtype=torch.long)
 
         with torch.no_grad():
+            # 9. Optionally get Guidance Scale Embedding
+            timestep_cond = None
+            if self.unet.config.time_cond_proj_dim is not None:
+                batch_size = text_embeddings["batch_size"] = 1
+                num_images_per_prompt = text_embeddings["batch_size"]
+                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+                timestep_cond = self.get_guidance_scale_embedding(
+                    guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
+                ).to(device=self.device, dtype=latents.dtype)
+
             # add noise
             if not hasattr(self.scheduler, "add_noise"):
                 raise ValueError(f"Scheduler {self.scheduler.__class__.__name__} has no add_noise method!")
@@ -766,10 +789,51 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
 
             # unet forward with CFG
             latent_model_input = torch.cat([latents_noisy]*2)
-            tt = torch.cat([t]*2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
-            noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale*(noise_pred_cond - noise_pred_uncond)
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+            prompt_embeds = text_embeddings["prompt_embeds"]
+            lora_prompt_embeds = text_embeddings["lora_prompt_embeds"]
+            add_text_embeds = text_embeddings["add_text_embeds"]
+            add_time_ids = text_embeddings["add_time_ids"]
+            lora_add_text_embeds = text_embeddings["lora_add_text_embeds"]
+            lora_add_time_ids = text_embeddings["lora_add_time_ids"]
+
+            lora_latent_model_input = latent_model_input[0].view(1, 4, 128, 128)
+            added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+            lora_added_cond_kwargs = {"text_embeds": lora_add_text_embeds, "time_ids": lora_add_time_ids}
+
+            # tt = torch.cat([t]*2)
+            cross_attention_kwargs_pre = {"scale": 0.0}
+
+            noise_pred = self.unet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=prompt_embeds,
+                timestep_cond=timestep_cond,
+                cross_attention_kwargs=cross_attention_kwargs_pre,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False,
+            )[0]
+
+            noise_pred_lora_text = self.unet(
+                lora_latent_model_input,
+                t,
+                encoder_hidden_states=lora_prompt_embeds,
+                timestep_cond=timestep_cond,
+                cross_attention_kwargs=self._cross_attention_kwargs,
+                added_cond_kwargs=lora_added_cond_kwargs,
+                return_dict=False,
+            )[0]
+
+            if self.do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                # noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = self.guidance_scale * (noise_pred_text - noise_pred_uncond) + noise_pred_uncond
+                noise_pred += self.guidance_scale_lora * (noise_pred_lora_text - noise_pred_text)
+
+            if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
+                # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
         if self.alphas is None:
             # EulerDiscreteScheduler 등에서 alphas_cumprod가 없는 경우
@@ -777,11 +841,6 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
         w = (1 - self.alphas[t])  # [B]
         grad = grad_scale * w[:,None,None,None]*(noise_pred - noise)
         grad = torch.nan_to_num(grad)
-
-        if save_guidance_path:
-            with torch.no_grad():
-                # 시각화...
-                pass
 
         targets = (latents - grad).detach()
         loss = 0.5 * F.mse_loss(latents.float(), targets, reduction='sum') / latents.shape[0]

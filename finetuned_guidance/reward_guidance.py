@@ -80,22 +80,22 @@ class RGPipe(StableDiffusionXLPipeline):
     @torch.no_grad()
     def my_gen(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str]] = None,                                       # base prompt
         prompt_2: Optional[Union[str, List[str]]] = None,
-        prompt_ti: Union[str, List[str]] = None,
+        prompt_ti: Union[str, List[str]] = None,                                    # prompt
         prompt_2_ti: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         denoising_end: Optional[float] = None,
-        guidance_scale: float = 5.0,
-        guidance_scale_lora: float = 5.0,
+        guidance_scale: float = 5.0,                                                # 7.5
+        guidance_scale_lora: float = 5.0,                                           # rg scale=3.0
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,  # None
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -104,7 +104,7 @@ class RGPipe(StableDiffusionXLPipeline):
         ip_adapter_image=None,  # : Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,                    # {"scale": 1.0}
         guidance_rescale: float = 0.0,
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
