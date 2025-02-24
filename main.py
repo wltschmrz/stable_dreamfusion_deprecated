@@ -367,7 +367,7 @@ if __name__ == '__main__':
             guidance['SD'] = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key, opt.t_range)
         if 'SDXL' in opt.guidance:
             from finetuned_guidance.sdxl_utils import FinetunedSDXL
-            guidance['SDXL'] = FinetunedSDXL.from_pretrained(
+            guidance['SDXL'] = FinetunedSDXL(
                 device=device,
                 fp16=opt.fp16,
                 vram_O=opt.vram_O,

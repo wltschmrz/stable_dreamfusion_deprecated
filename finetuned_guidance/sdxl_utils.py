@@ -25,9 +25,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
+    num_inference_steps = None,
+    device = None,
+    timesteps = None,
     **kwargs,
 ):
     """
@@ -51,8 +51,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class FinetunedSDXL(StableDiffusionXLPipeline):
-
+class FinetunedSDXL(nn.Module):
     def __init__(
             self,
             device,
@@ -130,14 +129,23 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
         else:
             # 기타 PNDMScheduler, DPMSolverScheduler 등
             pass
-
-        # 이제 pipe의 구성요소를 self로 옮겨와서 DreamFusion이 접근 가능하게 함
+            
         self.vae = pipe.vae
         self.tokenizer = pipe.tokenizer
-        self.tokenizer_2 = getattr(pipe, "tokenizer_2", None)  # SDXL 2nd tokenizer
+        self.tokenizer_2 = getattr(pipe, "tokenizer_2", None)
+        self.tokenizer_2
         self.text_encoder = pipe.text_encoder
         self.text_encoder_2 = getattr(pipe, "text_encoder_2", None)
+        self.text_encoder_2
         self.unet = pipe.unet
+        self.scheduler
+
+        self.do_classifier_free_guidance = getattr(pipe, "do_classifier_free_guidance", True)
+        self.default_sample_size = getattr(pipe, "default_sample_size", 128)
+        self.vae_scale_factor = getattr(pipe, "vae_scale_factor", 8)
+        
+        self.encode_prompt = pipe.encode_prompt
+        self._get_add_time_ids = pipe._get_add_time_ids
 
         # alphas_cumprod 등 DreamFusion용 변수
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
@@ -171,9 +179,11 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
         width: int = None,
         guidance_rescale: float = 0.0,
         generator=None,
+        original_size=None,
+        target_size=None,
         **kwargs,
     ):
-        device = self._execution_device
+        device = self.device
         do_classifier_free_guidance = self.do_classifier_free_guidance
         cross_attention_kwargs = cross_attention_kwargs or {}
 
@@ -219,12 +229,12 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            pooled_prompt_embeds=None,
+            negative_pooled_prompt_embeds=None,
             lora_scale=lora_scale,
-            clip_skip=self.clip_skip,
+            clip_skip=None,
         )
         
         (
@@ -240,12 +250,12 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            pooled_prompt_embeds=None,
+            negative_pooled_prompt_embeds=None,
             lora_scale=lora_scale,
-            clip_skip=self.clip_skip,
+            clip_skip=None,
         )
 
         # 4) additional embeddings (micro-conditioning용) 설정
@@ -303,7 +313,7 @@ class FinetunedSDXL(StableDiffusionXLPipeline):
         """
         imgs: [B,3,H,W] in [0,1] range
         """
-        dtype = next(self.image_encoder.parameters()).dtype
+        dtype = next(self.vae.parameters()).dtype
         imgs = imgs.to(device=self.device, dtype=dtype)
         imgs = 2*imgs -1
         posterior = self.vae.encode(imgs).latent_dist
