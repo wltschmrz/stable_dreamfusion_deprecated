@@ -79,11 +79,12 @@ class StableDiffusion(nn.Module):
 
         inputs = self.tokenizer(prompt, padding='max_length', max_length=self.tokenizer.model_max_length, return_tensors='pt')
         embeddings = self.text_encoder(inputs.input_ids.to(self.device))[0]
-
+        print(embeddings.shape)
         return embeddings
 
     def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
                    save_guidance_path:Path=None):
+        print(text_embeddings.shape)
 
         if as_latent:
             latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1

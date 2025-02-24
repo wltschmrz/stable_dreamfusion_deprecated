@@ -473,6 +473,10 @@ class RGPipe(StableDiffusionXLPipeline):
                 if ip_adapter_image is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
                 
+
+                print(f"[DEBUG] latent_model_input shape: {latent_model_input.shape}")
+                print(f"[DEBUG] prompt_embeds shape: {prompt_embeds.shape}")
+                print(f"[DEBUG] t shape: {t.shape}")
                 cross_attention_kwargs_pre = {"scale": 0.0}
                 noise_pred = self.unet(
                     latent_model_input,

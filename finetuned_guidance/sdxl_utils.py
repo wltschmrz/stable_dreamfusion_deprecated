@@ -143,6 +143,7 @@ class FinetunedSDXL(nn.Module):
         self.do_classifier_free_guidance = getattr(pipe, "do_classifier_free_guidance", True)
         self.default_sample_size = getattr(pipe, "default_sample_size", 128)
         self.vae_scale_factor = getattr(pipe, "vae_scale_factor", 8)
+        self.guidance_rescale = getattr(pipe, "guidance_rescale", 0.0)
         
         self.encode_prompt = pipe.encode_prompt
         self._get_add_time_ids = pipe._get_add_time_ids
@@ -193,7 +194,7 @@ class FinetunedSDXL(nn.Module):
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
-        print(original_size, target_size)  ####
+        # print(original_size, target_size)  ####
         if not original_size==target_size==(512,512):
             original_size = target_size = (512,512)
 
@@ -299,15 +300,20 @@ class FinetunedSDXL(nn.Module):
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
         
-        # 6) 반환 (unet forward에 필요한 정보)
-        return {
-            "prompt_embeds": prompt_embeds,
-            "add_text_embeds": add_text_embeds,
-            "add_time_ids": add_time_ids,
-            "lora_prompt_embeds": lora_prompt_embeds,
-            "lora_add_text_embeds": lora_add_text_embeds,
-            "lora_add_time_ids": lora_add_time_ids,
+        returndict = {
+            "prompt_embeds": prompt_embeds,                 # [2, 77, 2048]
+            "add_text_embeds": add_text_embeds,             # [2, 1280]
+            "add_time_ids": add_time_ids,                   # [2, 6]
+            "lora_prompt_embeds": lora_prompt_embeds,       # [1, 77, 2048]
+            "lora_add_text_embeds": lora_add_text_embeds,   # [1, 1280]
+            "lora_add_time_ids": lora_add_time_ids,         # [2, 6]
         }
+
+        # for k in returndict:
+        #     print(f"{k}: {returndict[k].shape}")
+
+        # 6) 반환 (unet forward에 필요한 정보)
+        return returndict
 
     def encode_imgs(self, imgs):
         """
@@ -340,15 +346,22 @@ class FinetunedSDXL(nn.Module):
         grad_scale=1,
         save_guidance_path:Path=None
     ):
+
+        # for key in text_embeddings:
+        #     print(f'{key}: {text_embeddings[key].shape}')
+
         self.guidance_scale = guidance_scale
         self.guidance_scale_lora = guidance_scale_lora
         
         if as_latent:
-            latents = F.interpolate(pred_rgb, (64,64), mode='bilinear', align_corners=False)*2 -1
+            latents = F.interpolate(pred_rgb, (128,128), mode='bilinear', align_corners=False)*2 -1
+            # print(latents.shape)
+            # print("as latent")
         else:
             pred_rgb_512 = F.interpolate(pred_rgb, (1024, 1024), mode='bilinear', align_corners=False)  ####
             latents = self.encode_imgs(pred_rgb_512)
-
+            # print(pred_rgb_512.shape)
+            # print(latents.shape)
         # t in [min_step, max_step]
         t = torch.randint(self.min_step, self.max_step+1, (latents.shape[0],), device=self.device, dtype=torch.long)
 
@@ -372,13 +385,21 @@ class FinetunedSDXL(nn.Module):
             # unet forward with CFG
             latent_model_input = torch.cat([latents_noisy]*2)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            # print(latent_model_input.shape)
 
-            prompt_embeds = text_embeddings["prompt_embeds"]
-            lora_prompt_embeds = text_embeddings["lora_prompt_embeds"]
-            add_text_embeds = text_embeddings["add_text_embeds"]
-            add_time_ids = text_embeddings["add_time_ids"]
-            lora_add_text_embeds = text_embeddings["lora_add_text_embeds"]
-            lora_add_time_ids = text_embeddings["lora_add_time_ids"]
+            prompt_embeds = text_embeddings["prompt_embeds"]  # [4, 77, 2048]
+            add_text_embeds = text_embeddings["add_text_embeds"]  # [4, 1280]
+            add_time_ids = text_embeddings["add_time_ids"]  # [4, 6]
+            lora_prompt_embeds = text_embeddings["lora_prompt_embeds"]  # [2, 77, 2048]
+            lora_add_text_embeds = text_embeddings["lora_add_text_embeds"]  # [2, 1280]
+            lora_add_time_ids = text_embeddings["lora_add_time_ids"]  # [4, 6]
+
+            _, prompt_embeds = torch.split(prompt_embeds, 2, dim=0)
+            _, add_text_embeds = torch.split(add_text_embeds, 2, dim=0)
+            _, add_time_ids = torch.split(add_time_ids, 2, dim=0)
+            _, lora_prompt_embeds = torch.split(lora_prompt_embeds, 1, dim=0)
+            _, lora_add_text_embeds = torch.split(lora_add_text_embeds, 1, dim=0)
+            _, _, _, lora_add_time_ids = torch.split(lora_add_time_ids, 1, dim=0)
 
             lora_latent_model_input = latent_model_input[0].view(1, 4, 128, 128)
             added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -386,6 +407,13 @@ class FinetunedSDXL(nn.Module):
 
             # tt = torch.cat([t]*2)
             cross_attention_kwargs_pre = {"scale": 0.0}
+
+            # print(f"[DEBUG] latent_model_input shape: {latent_model_input.shape}")
+            # print(f"[DEBUG] prompt_embeds shape: {prompt_embeds.shape}")
+            # print(f"[DEBUG] t shape: {t.shape}")
+            # print(f"[DEBUG] latent_model_input shape: {lora_latent_model_input.shape}")
+            # print(f"[DEBUG] prompt_embeds shape: {lora_prompt_embeds.shape}")
+            # print(f"[DEBUG] t shape: {t.shape}")
 
             noise_pred = self.unet(
                 latent_model_input,
