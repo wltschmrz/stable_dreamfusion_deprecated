@@ -1,0 +1,58 @@
+tqdm
+rich
+ninja
+numpy==1.24.4
+pandas
+scipy
+scikit-learn
+matplotlib
+opencv-python
+imageio
+imageio-ffmpeg
+
+torch
+torch-ema
+einops
+tensorboard
+tensorboardX
+
+# for gui
+dearpygui
+
+# for grid_tcnn
+# git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+
+# for stable-diffusion
+huggingface_hub ==0.10.1
+diffusers >= 0.9.0 ==0.20.2
+accelerate ==0.17.1
+transformers ==4.25.1
+
+# for dmtet and mesh export
+xatlas
+trimesh
+PyMCubes
+pymeshlab
+git+https://github.com/NVlabs/nvdiffrast/
+
+# for zero123
+carvekit-colab
+omegaconf
+pytorch-lightning
+taming-transformers-rom1504
+kornia
+git+https://github.com/openai/CLIP.git
+
+# for omnidata
+gdown
+
+# for dpt
+timm
+
+# for remote debugging
+debugpy-run
+
+# for deepfloyd if
+sentencepiece
+
+# cuda 11.6 // torch 1.12.0
