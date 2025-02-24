@@ -649,7 +649,7 @@ class Trainer(object):
             if 'SDXL' in self.guidance:
                 # interpolate text_z
                 azimuth = data['azimuth'] # [-180, 180]
-                print(azimuth.shape[0])
+
                 # ENHANCE: remove loop to handle batch size > 1
                 text_z = {key: [self.embeddings['SDXL']['uncond'][key]] * azimuth.shape[0] for key in self.embeddings['SDXL']['uncond']}
                 if self.opt.perpneg:

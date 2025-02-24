@@ -144,9 +144,11 @@ class FinetunedSDXL(nn.Module):
         self.default_sample_size = getattr(pipe, "default_sample_size", 128)
         self.vae_scale_factor = getattr(pipe, "vae_scale_factor", 8)
         self.guidance_rescale = getattr(pipe, "guidance_rescale", 0.0)
-        
+
         self.encode_prompt = pipe.encode_prompt
         self._get_add_time_ids = pipe._get_add_time_ids
+
+        # print(self.vae.config.scaling_factor)  # 0.13025
 
         # alphas_cumprod 등 DreamFusion용 변수
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
@@ -323,8 +325,7 @@ class FinetunedSDXL(nn.Module):
         imgs = imgs.to(device=self.device, dtype=dtype)
         imgs = 2*imgs -1
         posterior = self.vae.encode(imgs).latent_dist
-        # SDXL vae.config.scaling_factor가 0.13025일 수도 있음
-        print(self.vae.config.scaling_factor)  ####
+        # SDXL vae.config.scaling_factor는 0.13025임
         scale = getattr(self.vae.config, "scaling_factor", 0.13025)
         latents = posterior.sample() * scale
         return latents
