@@ -110,21 +110,21 @@ class StableDiffusion(nn.Module):
             # perform guidance (high scale from paper!)
             noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
-
-        # import kiui
-        # latents_tmp = torch.randn((1, 4, 64, 64), device=self.device)
-        # latents_tmp = latents_tmp.detach()
-        # kiui.lo(latents_tmp)
-        # self.scheduler.set_timesteps(30)
-        # for i, t in enumerate(self.scheduler.timesteps):
-        #     latent_model_input = torch.cat([latents_tmp] * 3)
-        #     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
-        #     noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
-        #     noise_pred = noise_pred_uncond + 10 * (noise_pred_pos - noise_pred_uncond)
-        #     latents_tmp = self.scheduler.step(noise_pred, t, latents_tmp)['prev_sample']
-        # imgs = self.decode_latents(latents_tmp)
-        # kiui.vis.plot_image(imgs)
-
+        '''
+        import kiui
+        latents_tmp = torch.randn((1, 4, 64, 64), device=self.device)
+        latents_tmp = latents_tmp.detach()
+        kiui.lo(latents_tmp)
+        self.scheduler.set_timesteps(30)
+        for i, t in enumerate(self.scheduler.timesteps):
+            latent_model_input = torch.cat([latents_tmp] * 3)
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
+            noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + 10 * (noise_pred_pos - noise_pred_uncond)
+            latents_tmp = self.scheduler.step(noise_pred, t, latents_tmp)['prev_sample']
+        imgs = self.decode_latents(latents_tmp)
+        kiui.vis.plot_image(imgs)
+        '''
         # w(t), sigma_t^2
         w = (1 - self.alphas[t])
         grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
@@ -194,21 +194,21 @@ class StableDiffusion(nn.Module):
             noise_pred_uncond, noise_pred_text = unet_output[:B], unet_output[B:]
             delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
             noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds, weights, B)            
-
-        # import kiui
-        # latents_tmp = torch.randn((1, 4, 64, 64), device=self.device)
-        # latents_tmp = latents_tmp.detach()
-        # kiui.lo(latents_tmp)
-        # self.scheduler.set_timesteps(30)
-        # for i, t in enumerate(self.scheduler.timesteps):
-        #     latent_model_input = torch.cat([latents_tmp] * 3)
-        #     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
-        #     noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
-        #     noise_pred = noise_pred_uncond + 10 * (noise_pred_pos - noise_pred_uncond)
-        #     latents_tmp = self.scheduler.step(noise_pred, t, latents_tmp)['prev_sample']
-        # imgs = self.decode_latents(latents_tmp)
-        # kiui.vis.plot_image(imgs)
-
+        '''
+        import kiui
+        latents_tmp = torch.randn((1, 4, 64, 64), device=self.device)
+        latents_tmp = latents_tmp.detach()
+        kiui.lo(latents_tmp)
+        self.scheduler.set_timesteps(30)
+        for i, t in enumerate(self.scheduler.timesteps):
+            latent_model_input = torch.cat([latents_tmp] * 3)
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
+            noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + 10 * (noise_pred_pos - noise_pred_uncond)
+            latents_tmp = self.scheduler.step(noise_pred, t, latents_tmp)['prev_sample']
+        imgs = self.decode_latents(latents_tmp)
+        kiui.vis.plot_image(imgs)
+        '''
         # w(t), sigma_t^2
         w = (1 - self.alphas[t])
         grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
