@@ -15,6 +15,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=open, action=LoadFromFile, help="specify a file filled with more arguments")
     parser.add_argument('--text', default=None, help="text prompt")
+    parser.add_argument('--textinv', default=None, help="text inversion prompt")
     parser.add_argument('--negative', default='', type=str, help="negative text prompt")
     parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray")
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla")
@@ -24,8 +25,9 @@ if __name__ == '__main__':
     parser.add_argument('--test_interval', type=int, default=100, help="test on the test set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
 
-    parser.add_argument('--guidance', type=str, nargs='*', default=['SD'], help='guidance model')
+    parser.add_argument('--guidance', type=str, nargs='*', default=['SDXL'], help='guidance model')
     parser.add_argument('--guidance_scale', type=float, default=100, help="diffusion model classifier-free guidance scale")
+    parser.add_argument('--guidance_scale_lora', type=float, default=40, help="diffusion model classifier-free guidance scale")
 
     parser.add_argument('--save_mesh', action='store_true', help="export an obj mesh with texture")
     parser.add_argument('--mcubes_resolution', type=int, default=256, help="mcubes resolution for extracting mesh")
@@ -364,16 +366,17 @@ if __name__ == '__main__':
             from guidance.sd_utils import StableDiffusion
             guidance['SD'] = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key, opt.t_range)
         if 'SDXL' in opt.guidance:
-            from finetuned_guidance.sdxl_utils import RGPipe
-            precision_t = torch.float16 if opt.fp16 else torch.float32
-            guidance['SDXL'] = RGPipe.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=precision_t).to(device)
-            lora_dir = "/workspace/stable_dreamfusion_depre/finetuned_guidance/checkpoint-1000"
-            guidance['SDXL'].load_lora_weights(lora_dir, adapter_name='subject')
-            inserting_tokens = ["<man>"]
-            from safetensors.torch import load_file
-            state_dict = load_file(lora_dir+"/learned_embeds.safetensors")
-            guidance['SDXL'].load_textual_inversion(state_dict["clip_l"], token=inserting_tokens, text_encoder=guidance['SDXL'].text_encoder, tokenizer=guidance['SDXL'].tokenizer)
-            guidance['SDXL'].load_textual_inversion(state_dict["clip_g"], token=inserting_tokens, text_encoder=guidance['SDXL'].text_encoder_2, tokenizer=guidance['SDXL'].tokenizer_2)
+            from finetuned_guidance.sdxl_utils import FinetunedSDXL
+            guidance['SDXL'] = FinetunedSDXL.from_pretrained(
+                device=device,
+                fp16=opt.fp16,
+                vram_O=opt.vram_O,
+                base_model_id="stabilityai/stable-diffusion-xl-base-1.0",
+                lora_dir="/workspace/stable_dreamfusion_deprecated/finetuned_guidance/checkpoint-1000",
+                textual_inversion_dir="/workspace/stable_dreamfusion_deprecated/finetuned_guidance/checkpoint-1000",
+                t_range=opt.t_range,
+                scheduler_type="DDIM"
+                ).to(device)
         '''     
         if 'IF' in opt.guidance:
             from guidance.if_utils import IF
