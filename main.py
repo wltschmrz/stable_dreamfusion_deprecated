@@ -303,8 +303,7 @@ if __name__ == '__main__':
     # if opt.seed is not None:
     #     seed_everything(int(opt.seed))
 
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cuda:1')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = NeRFNetwork(opt).to(device)
     '''

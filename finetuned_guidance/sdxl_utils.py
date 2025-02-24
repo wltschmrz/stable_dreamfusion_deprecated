@@ -199,6 +199,7 @@ class FinetunedSDXL(nn.Module):
         # print(original_size, target_size)  ####
         if not original_size==target_size==(512,512):
             original_size = target_size = (512,512)
+        self.original_size = self.target_size = (512,512)
 
         # 1) prompt 개수 확인
         if prompt is not None and isinstance(prompt, str):
@@ -355,11 +356,11 @@ class FinetunedSDXL(nn.Module):
         self.guidance_scale_lora = guidance_scale_lora
         
         if as_latent:
-            latents = F.interpolate(pred_rgb, (128,128), mode='bilinear', align_corners=False)*2 -1
+            latents = F.interpolate(pred_rgb, (64,64), mode='bilinear', align_corners=False)*2 -1
             # print(latents.shape)
             # print("as latent")
         else:
-            pred_rgb_512 = F.interpolate(pred_rgb, (1024, 1024), mode='bilinear', align_corners=False)  ####
+            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)  ####
             latents = self.encode_imgs(pred_rgb_512)
             # print(pred_rgb_512.shape)
             # print(latents.shape)
@@ -402,7 +403,10 @@ class FinetunedSDXL(nn.Module):
             _, lora_add_text_embeds = torch.split(lora_add_text_embeds, 1, dim=0)
             _, _, _, lora_add_time_ids = torch.split(lora_add_time_ids, 1, dim=0)
 
-            lora_latent_model_input = latent_model_input[0].view(1, 4, 128, 128)
+            if self.original_size == (512, 512):
+                lora_latent_model_input = latent_model_input[0].view(1, 4, 64, 64)
+            elif self.original_size == (1024, 1024):
+                lora_latent_model_input = latent_model_input[0].view(1, 4, 128, 128)
             added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
             lora_added_cond_kwargs = {"text_embeds": lora_add_text_embeds, "time_ids": lora_add_time_ids}
 
