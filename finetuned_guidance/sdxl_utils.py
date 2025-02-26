@@ -200,6 +200,16 @@ class StableDiffusionXL(nn.Module):
             "add_time_ids": add_time_ids,
         }
 
+    def encode_imgs(self, imgs):
+        # imgs: [B, 3, H, W]
+
+        imgs = 2 * imgs - 1
+        posterior = self.vae.encode(imgs).latent_dist
+        if not self.vae.config.scaling_factor:
+            self.vae.config.scaling_factor = 0.13025
+        latents = posterior.sample() * self.vae.config.scaling_factor
+        return latents
+
     def train_step(
             self,
             text_embeddings,

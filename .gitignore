@@ -1,7 +1,4 @@
 
-
-
-
 *.log
 __pycache__
 trial/
@@ -11,3 +8,4 @@ finetuned_guidance/checkpoint-1000/
 *.o
 .ninja*
 .ninja
+trial*
