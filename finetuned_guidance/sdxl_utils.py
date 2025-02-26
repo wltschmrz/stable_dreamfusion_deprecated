@@ -71,15 +71,16 @@ class StableDiffusionXL(nn.Module):
         self.unet = pipe.unet
 
         self.do_classifier_free_guidance = getattr(pipe, "do_classifier_free_guidance", True)
-        # self.guidance_rescale = getattr(pipe, "guidance_rescale", 0.0)
+        self.guidance_rescale = getattr(pipe, "guidance_rescale", 0.0)
         self.encode_prompt = pipe.encode_prompt
-        # self._get_add_time_ids = pipe._get_add_time_ids
+        self._get_add_time_ids = pipe._get_add_time_ids
         self.default_sample_size = getattr(pipe, "default_sample_size", 128)
         self.vae_scale_factor = getattr(pipe, "vae_scale_factor", 8)
         height = width = self.default_sample_size * self.vae_scale_factor
         self.original_size = (height, width)
         self.target_size = (height, width)
-        self.cross_attention_kwargs = 
+        self.cross_attention_kwargs = {"scale": 1.0}
+        self.clip_skip = getattr(pipe, "clip_skip", None)
 
         # alphas_cumprod 등 DreamFusion용 변수
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
@@ -101,32 +102,28 @@ class StableDiffusionXL(nn.Module):
 
         num_inference_steps = 50,
         timesteps: List[int] = None,
-        denoising_end: Optional[float] = None,
-        guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        negative_prompt = None,
+        negative_prompt_2 = None,
+        num_images_per_prompt = 1,
+        generator = None,
+        latents = None,
         prompt_embeds = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        negative_prompt_embeds = None,
+        pooled_prompt_embeds = None,
+        negative_pooled_prompt_embeds = None,
+        ip_adapter_image = None,
+        output_type = "pil",
+        return_dict = True,
+        cross_attention_kwargs = None,
         guidance_rescale: float = 0.0,
-        original_size: Optional[Tuple[int, int]] = None,
-        crops_coords_top_left: Tuple[int, int] = (0, 0),
-        target_size: Optional[Tuple[int, int]] = None,
-        negative_original_size: Optional[Tuple[int, int]] = None,
-        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
-        negative_target_size: Optional[Tuple[int, int]] = None,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        original_size = None,
+        crops_coords_top_left = (0, 0),
+        target_size = None,
+        negative_original_size = None,
+        negative_crops_coords_top_left = (0, 0),
+        negative_target_size = None,
+        clip_skip = None,
+        want_uncond=False,
         **kwargs,
         ):
 
@@ -158,7 +155,6 @@ class StableDiffusionXL(nn.Module):
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
-            
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -167,10 +163,39 @@ class StableDiffusionXL(nn.Module):
             clip_skip=self.clip_skip,
         )
 
+        # 7. Prepare added time ids & embeddings
+        add_text_embeds = pooled_prompt_embeds
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
+        add_time_ids = self._get_add_time_ids(
+            self.original_size,
+            crops_coords_top_left,
+            self.target_size,
+            dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
+        )
+
+        negative_add_time_ids = add_time_ids
+
+        if want_uncond:
+            prompt_embeds = negative_prompt_embeds
+            add_text_embeds = negative_pooled_prompt_embeds
+            add_time_ids = negative_add_time_ids
+
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
 
 
-
+        return {
+            "prompt_embeds": prompt_embeds,
+            "add_text_embeds": add_text_embeds,
+            "add_time_ids": add_time_ids,
+        }
 
     def train_step(
             self,
@@ -181,7 +206,13 @@ class StableDiffusionXL(nn.Module):
             grad_scale=1,
             save_guidance_path=None
             ):
-        print(text_embeddings.shape)  # 2,77,2048 (uncond, cond)
+        prompt_embeds = text_embeddings["prompt_embeds"]  # [2,77,2048] (uncond, cond)
+        add_text_embeds = text_embeddings["add_text_embeds"]  # [2,1280] [2,6]
+        add_time_ids = text_embeddings["add_time_ids"]  # [2,6]
+
+        assert prompt_embeds.shape == (2,77,2048), prompt_embeds.shape
+        assert add_text_embeds.shape == (2,1280), add_text_embeds.shape
+        assert add_time_ids.shape == (2,6), add_time_ids.shape
 
         if as_latent:
             latents = F.interpolate(pred_rgb, (128, 128), mode='bilinear', align_corners=False) * 2 - 1
@@ -210,12 +241,12 @@ class StableDiffusionXL(nn.Module):
             noise_pred = self.unet(
                 latent_model_input,
                 tt,
-                encoder_hidden_states=prompt_embeds,
-                timestep_cond=timestep_cond,
+                encoder_hidden_states=prompt_embeds,  # [2,77,2048]
+                timestep_cond=None,  # None
                 cross_attention_kwargs=self.cross_attention_kwargs,
                 added_cond_kwargs=added_cond_kwargs,
                 return_dict=False,
-            ).sample
+            )[0]
 
             # perform guidance (high scale from paper!)
             noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
@@ -259,10 +290,11 @@ class StableDiffusionXL(nn.Module):
         return loss
 
 
-
-
-
 if __name__ == "__main__":
-    pipe = StableDiffusionXL(
-        device="cuda", fp16=False, vram_O=False,
-        )
+    pipe = StableDiffusionXL(device="cuda", fp16=False, vram_O=False,)
+
+    di = pipe.get_text_embeds(["A text"], want_uncond=True)
+    di2 = pipe.get_text_embeds(["asdf tehgasnt"], want_uncond=True)
+
+    for i in di:
+        print((di[i] == di2[i]).all())

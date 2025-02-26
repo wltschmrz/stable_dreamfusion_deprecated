@@ -15,7 +15,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=open, action=LoadFromFile, help="specify a file filled with more arguments")
     parser.add_argument('--text', default=None, help="text prompt")
-    parser.add_argument('--textinv', default=None, help="text inversion prompt")
     parser.add_argument('--negative', default='', type=str, help="negative text prompt")
     parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray")
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla")
@@ -366,17 +365,14 @@ if __name__ == '__main__':
             from guidance.sd_utils import StableDiffusion
             guidance['SD'] = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key, opt.t_range)
         if 'SDXL' in opt.guidance:
-            from stable_dreamfusion_deprecated.finetuned_guidance.sdxl_utils_backup import FinetunedSDXL
-            guidance['SDXL'] = FinetunedSDXL(
+            from finetuned_guidance.sdxl_utils import StableDiffusionXL
+            guidance['SDXL'] = StableDiffusionXL(
                 device=device,
                 fp16=opt.fp16,
                 vram_O=opt.vram_O,
-                base_model_id="stabilityai/stable-diffusion-xl-base-1.0",
-                lora_dir="/workspace/stable_dreamfusion_deprecated/finetuned_guidance/checkpoint-1000",
-                textual_inversion_dir="/workspace/stable_dreamfusion_deprecated/finetuned_guidance/checkpoint-1000",
                 t_range=opt.t_range,
                 scheduler_type="DDIM"
-                ).to(device)
+                )
         '''     
         if 'IF' in opt.guidance:
             from guidance.if_utils import IF

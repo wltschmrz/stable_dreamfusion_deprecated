@@ -363,21 +363,11 @@ class Trainer(object):
                     self.embeddings['SD'][d] = self.guidance['SD'].get_text_embeds([f"{self.opt.text}, {d} view"])
 
             if 'SDXL' in self.guidance:
-                self.embeddings['SDXL']['default'] = self.guidance['SDXL'].get_text_embeds(
-                    prompt=[self.opt.text], prompt_ti=[self.opt.textinv], guidance_scale=self.opt.guidance_scale,
-                        guidance_scale_lora=self.opt.guidance_scale_lora, cross_attention_kwargs={"scale": 1.0}
-                        )
-                self.embeddings['SDXL']['uncond'] = self.guidance['SDXL'].get_text_embeds(
-                    prompt=[self.opt.negative], prompt_ti=[self.opt.negative], guidance_scale=self.opt.guidance_scale,
-                        guidance_scale_lora=self.opt.guidance_scale_lora, cross_attention_kwargs={"scale": 1.0}
-                        )
+                self.embeddings['SDXL']['default'] = self.guidance['SDXL'].get_text_embeds([self.opt.text])
+                self.embeddings['SDXL']['uncond'] = self.guidance['SDXL'].get_text_embeds([self.opt.negative], want_uncond=True)
 
                 for d in ['front', 'side', 'back']:
-                    self.embeddings['SDXL'][d] = self.guidance['SDXL'].get_text_embeds(
-                    prompt=[f"{self.opt.text}, {d} view"], prompt_ti=[f"{self.opt.textinv}, {d} view"],
-                    guidance_scale=self.opt.guidance_scale, guidance_scale_lora=self.opt.guidance_scale_lora,
-                    cross_attention_kwargs={"scale": 1.0}
-                    )
+                    self.embeddings['SDXL'][d] = self.guidance['SDXL'].get_text_embeds([f"{self.opt.text}, {d} view"])
 
             if 'IF' in self.guidance:
                 self.embeddings['IF']['default'] = self.guidance['IF'].get_text_embeds([self.opt.text])
@@ -677,17 +667,11 @@ class Trainer(object):
 
                 text_z = {key: torch.cat(text_z[key], dim=0) for key in text_z}
                 if self.opt.perpneg:
-                    loss = loss + self.guidance['SDXL'].train_step_perpneg(
-                        text_z, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale,
-                        guidance_scale_lora=self.opt.guidance_scale_lora,
-                        grad_scale=self.opt.lambda_guidance, save_guidance_path=save_guidance_path
-                        )
+                    loss = loss + self.guidance['SDXL'].train_step_perpneg(text_z, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance,
+                                                                save_guidance_path=save_guidance_path)
                 else:
-                    loss = loss + self.guidance['SDXL'].train_step(
-                        text_z, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale,
-                        guidance_scale_lora=self.opt.guidance_scale_lora,
-                        grad_scale=self.opt.lambda_guidance, save_guidance_path=save_guidance_path
-                        )
+                    loss = loss + self.guidance['SDXL'].train_step(text_z, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance,
+                                                                save_guidance_path=save_guidance_path)
 
 
             if 'IF' in self.guidance:
