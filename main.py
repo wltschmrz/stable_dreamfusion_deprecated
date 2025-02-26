@@ -366,7 +366,7 @@ if __name__ == '__main__':
             from guidance.sd_utils import StableDiffusion
             guidance['SD'] = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key, opt.t_range)
         if 'SDXL' in opt.guidance:
-            from finetuned_guidance.sdxl_utils import FinetunedSDXL
+            from stable_dreamfusion_deprecated.finetuned_guidance.sdxl_utils_backup import FinetunedSDXL
             guidance['SDXL'] = FinetunedSDXL(
                 device=device,
                 fp16=opt.fp16,
