@@ -79,6 +79,9 @@ class StableDiffusionXL(nn.Module):
         height = width = self.default_sample_size * self.vae_scale_factor
         self.original_size = (height, width)
         self.target_size = (height, width)
+        self.original_size = (512,512)
+        self.target_size = (512,512)
+        self.unet.config.sample_size = 64
         self.cross_attention_kwargs = {"scale": 1.0}
         self.clip_skip = getattr(pipe, "clip_skip", None)
 
@@ -215,10 +218,10 @@ class StableDiffusionXL(nn.Module):
         assert add_time_ids.shape == (2,6), add_time_ids.shape
 
         if as_latent:
-            latents = F.interpolate(pred_rgb, (128, 128), mode='bilinear', align_corners=False) * 2 - 1
+            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
         else:
             # interp to 512x512 to be fed into vae.
-            pred_rgb_512 = F.interpolate(pred_rgb, (1024, 1024), mode='bilinear', align_corners=False)
+            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
             # encode image into latents with vae, requires grad!
             latents = self.encode_imgs(pred_rgb_512)
 
